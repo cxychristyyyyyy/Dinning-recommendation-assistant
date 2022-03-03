@@ -11,6 +11,7 @@ import boto3
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
+
 """ --- Helpers to build responses which match the structure of the necessary dialog actions --- """
 
 
@@ -48,7 +49,8 @@ def delegate(session_attributes, slots):
             'slots': slots
         }
     }
-
+    
+    
 
 """ --- Helper Functions --- """
 
@@ -74,15 +76,15 @@ def try_ex(func):
         return None
 
 
+
 def isvalid_date(date):
     try:
         # ----------------------------------------------
         dateutil.parser.parse(date)
-
+        
         return True
     except ValueError:
         return False
-
 
 def build_validation_result(is_valid, violated_slot, message_content):
     if message_content is None:
@@ -96,68 +98,60 @@ def build_validation_result(is_valid, violated_slot, message_content):
         'message': {'contentType': 'PlainText', 'content': message_content}
     }
 
-
 def validate_suggestion(slots):
     location = try_ex(lambda: slots['Location'])
-    cuisine = try_ex(lambda: slots['Cuisine'])
-    dining_date = try_ex(lambda: slots['DiningDate'])
-    dining_time = try_ex(lambda: slots['DiningTime'])
-    num_of_people = try_ex(lambda: slots['NumberofPPL'])
-
+    cuisine = try_ex(lambda:slots['Cuisine'])
+    dining_date = try_ex(lambda:slots['DiningDate'])
+    dining_time = try_ex(lambda:slots['DiningTime'])
+    num_of_people = try_ex(lambda:slots['NumberofPPL'])
+    phone_number = try_ex(lambda:slots['Phone'])
+    email = try_ex(lambda:slots['Email'])
+    
     valid_cities = ['new york', 'nyc', 'new york city', 'ny', 'manhattan', 'brooklyn', 'queens']
-    cuisine_types = ['chinese', 'thai', 'american', 'italian', 'japanese']
+    cuisine_types = ['chinese', 'thai', 'american',  'italian', 'japanese']
     if location is not None and location.lower() not in valid_cities:
-        return build_validation_result(False, 'Location',
-                                       'Sorry, {} is not a valid location. Try another location please'.format(
-                                           location))
-
+        return build_validation_result(False, 'Location', 'Sorry, {} is not a valid location. Try another location please'.format(location))
+    
     if cuisine is not None and cuisine.lower() not in cuisine_types:
-        return build_validation_result(False, 'Cuisine',
-                                       'Sorry,  {} is not a valid cuisine type. Try another cuisine type please.'.format(
-                                           cuisine))
-
+        return build_validation_result(False, 'Cuisine', 'Sorry,  {} is not a valid cuisine type. Try another cuisine type please.'.format(cuisine))
+        
     if dining_date is not None:
         if not isvalid_date(dining_date):
-            return build_validation_result(False, 'DiningDate',
-                                           'Sorry, this is not a valid date. Could you please give me a valid date?')
+            return build_validation_result(False, 'DiningDate', 'Sorry, this is not a valid date. Could you please give me a valid date?')
         elif datetime.datetime.strptime(dining_date, '%Y-%m-%d').date() < datetime.date.today():
-            return build_validation_result(False, 'DiningDate',
-                                           'The date you gave has already passed. Try a different date please.')
-
+            return build_validation_result(False, 'DiningDate', 'The date you gave has already passed. Try a different date please.')
+            
     if dining_time is not None:
         if len(dining_time) != 5:
-            return build_validation_result(False, 'DiningTime',
-                                           'I did not recognize that, what time would you like to book your appointment?')
+            return build_validation_result(False, 'DiningTime', 'I did not recognize that, what time would you like to book your appointment?')
 
         hour, minute = str(dining_time).split(':')
         hour = parse_int(hour)
         minute = parse_int(minute)
         if math.isnan(hour) or math.isnan(minute):
-            return build_validation_result(False, 'DiningTime',
-                                           'I did not recognize that, what time would you like to book your appointment?')
+            return build_validation_result(False, 'DiningTime', 'I did not recognize that, what time would you like to book your appointment?')
 
-        if minute < 0 or minute > 59:
-            return build_validation_result(False, 'DiningTime',
-                                           'Sorry, this is not a valid time. Could you please give me a valid time?')
-
-        if hour < 0 or hour > 24:
-            # Outside of business hours
-            return build_validation_result(False, 'DiningTime',
-                                           'Sorry, this is not a valid time. Could you please give me a valid time?')
+        dinner_time = hour * 60 + minute
+        now_time = datetime.datetime.now()
+        if datetime.datetime.strptime(dining_date, '%Y-%m-%d').date() == datetime.date.today() and dinner_time - (now_time.hour * 60 + now_time.minute) < 60:
+            return build_validation_result(False, 'DiningTime', 'Reservations must be scheduled at least one hour in advance. Could you please try another time?')
+            
 
     if num_of_people is not None and (int(num_of_people) < 1):
-        return build_validation_result(False, 'NumberofPPL',
-                                       'Sorry, the number of people cannot be less than one. How many people do you have?')
+        return build_validation_result(False, 'NumberofPPL', 'Sorry, the number of people cannot be less than one. How many people do you have?')
+        
+    if phone_number is not None:
+        if not phone_number.isnumeric() or len(phone_number) != 10:
+            return build_validation_result(False, 'Phone', 'Sorry,  this is not a valid phone number. Please enter a valid phone number.') 
+            
 
     return build_validation_result(True, None, None)
 
 
 """ --- Functions that control the bot's behavior --- """
 
-
 def greetings(intent_request):
-    output_session_attributes = intent_request['sessionAttributes'] if intent_request[
-                                                                           'sessionAttributes'] is not None else {}
+    output_session_attributes = intent_request['sessionAttributes'] if intent_request['sessionAttributes'] is not None else {}
     return close(
         output_session_attributes,
         'Fulfilled',
@@ -166,11 +160,9 @@ def greetings(intent_request):
             'content': 'Hi there, how can I help?'
         }
     )
-
-
+    
 def thank_you(intent_request):
-    output_session_attributes = intent_request['sessionAttributes'] if intent_request[
-                                                                           'sessionAttributes'] is not None else {}
+    output_session_attributes = intent_request['sessionAttributes'] if intent_request['sessionAttributes'] is not None else {}
     return close(
         output_session_attributes,
         'Fulfilled',
@@ -189,10 +181,9 @@ def dining_suggestions(intent_request):
     num_of_people = intent_request['currentIntent']['slots']['NumberofPPL']
     phone_number = intent_request['currentIntent']['slots']['Phone']
     email = intent_request['currentIntent']['slots']['Email']
-    output_session_attributes = intent_request['sessionAttributes'] if intent_request[
-                                                                           'sessionAttributes'] is not None else {}
+    output_session_attributes = intent_request['sessionAttributes'] if intent_request['sessionAttributes'] is not None else {}
     source = intent_request['invocationSource']
-
+    
     if source == 'DialogCodeHook':
         slots = intent_request['currentIntent']['slots']
         validation_result = validate_suggestion(slots)
@@ -206,48 +197,48 @@ def dining_suggestions(intent_request):
                 validation_result['message']
             )
         return delegate(output_session_attributes, slots)
-
+        
     elif source == 'FulfillmentCodeHook':
-        sqs = boto3.client('sqs')
+        sqs = boto3.client('sqs', aws_access_key_id="", aws_secret_access_key="")
         url = sqs.get_queue_url(QueueName='slotsQueue')
         queue_url = url['QueueUrl']
         response = sqs.send_message(
             QueueUrl=queue_url,
             MessageAttributes={
-                'Location': {
+                'Location':{
                     'DataType': 'String',
                     'StringValue': location
                 },
-                'Cuisine': {
+                'Cuisine':{
                     'DataType': 'String',
                     'StringValue': cuisine
                 },
-                'Dining_date': {
+                'Dining_date':{
                     'DataType': 'String',
                     'StringValue': dining_date
                 },
-                'Dining_time': {
+                'Dining_time':{
                     'DataType': 'String',
                     'StringValue': dining_time
                 },
-                'Number_of_people': {
+                'Number_of_people':{
                     'DataType': 'Number',
                     'StringValue': str(num_of_people)
                 },
-                'Phone_number': {
+                'Phone_number':{
                     'DataType': 'String',
                     'StringValue': str(phone_number)
                 },
-                'Email': {
+                'Email':{
                     'DataType': 'String',
                     'StringValue': str(email)
                 }
             },
             MessageBody=('Customer information input in chatbot')
         )
-
+        
         print('Message id for this response msg is {}'.format(response['MessageId']))
-
+        
         return close(
             output_session_attributes,
             'Fulfilled',
@@ -266,8 +257,7 @@ def dispatch(intent_request):
     Called when the user specifies an intent for this bot.
     """
 
-    logger.debug(
-        'dispatch userId={}, intentName={}'.format(intent_request['userId'], intent_request['currentIntent']['name']))
+    logger.debug('dispatch userId={}, intentName={}'.format(intent_request['userId'], intent_request['currentIntent']['name']))
 
     intent_name = intent_request['currentIntent']['name']
 
